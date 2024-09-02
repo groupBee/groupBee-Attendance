@@ -1,1 +1,12 @@
-spring.application.name=groupBee-Attendance
+server:
+  port: 9519
+
+spring:
+  jackson:
+    time-zone: Asia/Seoul
+
+springdoc:
+  api-docs:
+    path: /api/attendance/swagger
+  swagger-ui:
+    path: /api/attendance/swagger

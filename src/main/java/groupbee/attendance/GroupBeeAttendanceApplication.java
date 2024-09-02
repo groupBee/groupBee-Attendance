@@ -1,9 +1,11 @@
-package groupbee.groupbeeattendance;
+package groupbee.attendance;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.cloud.openfeign.EnableFeignClients;
 
 @SpringBootApplication
+@EnableFeignClients
 public class GroupBeeAttendanceApplication {
 
     public static void main(String[] args) {
