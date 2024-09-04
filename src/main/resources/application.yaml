@@ -1,5 +1,6 @@
 server:
-  port: 9519
+  port: 9522
+#  port: 9519
 
 spring:
   jackson:

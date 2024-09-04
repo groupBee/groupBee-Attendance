@@ -34,6 +34,12 @@ public class AttendanceController {
         return attendanceService.checkIn(attendanceDto);
     }
 
+    @Operation(
+            summary = "퇴근",
+            description = "{\\n\" +\n" +
+                    "                    \"    \\\"checkOut\\\" : \\\"localDateTime\\\"\\n\" +\n" +
+                    "                    \"}"
+    )
     @PostMapping("checkout")
     public ResponseEntity<String> checkOut(@RequestBody AttendanceDto attendanceDto) {
         return attendanceService.checkOut(attendanceDto);
