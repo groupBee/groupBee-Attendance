@@ -13,8 +13,10 @@ import org.springframework.stereotype.Service;
 
 import java.net.URL;
 import java.sql.Timestamp;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 
@@ -102,7 +104,7 @@ public class AttendanceService {
     }
 
     public ResponseEntity<String> checkIn(AttendanceDto attendanceDto) {
-        try{
+        try {
             Map<String, Object> employeeInfo = feignClient.getHrInfo();
             int hrId = (int) employeeInfo.get("id");
 
@@ -116,12 +118,6 @@ public class AttendanceService {
                     .atZone(ZoneId.of("Asia/Seoul"))
                     .withZoneSameInstant(ZoneId.of("UTC"))
                     .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
-
-//            String utcCheckInTime = attendanceDto.getCheckIn().atZone(ZoneId.of("Asia/Seoul"))
-//                    .withZoneSameInstant(ZoneId.of("UTC"))
-//                    .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
-//            String checkInTime = attendanceDto.getCheckIn().toLocalDateTime()
-//                            .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
 
             System.out.println(attendanceDto.getCheckIn());
             System.out.println(utcCheckInTime);
@@ -238,6 +234,108 @@ public class AttendanceService {
             System.out.println("Exception: " + e.getMessage());
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(null);
         }
+    }
+
+    public ResponseEntity<?> getTodayCheckIn() {
+        try {
+            Map<String, Object> employeeInfo = feignClient.getHrInfo();
+            int hrId = (int) employeeInfo.get("id");
+
+            XmlRpcClient models = new XmlRpcClient();
+            XmlRpcClientConfigImpl config = new XmlRpcClientConfigImpl();
+            config.setServerURL(new URL(String.format("%s/xmlrpc/2/object", odooUrl)));
+            models.setConfig(config);
+
+            // 오늘과 어제 날짜
+            LocalDate today = LocalDate.now(ZoneId.of("Asia/Seoul"));
+            LocalDate yesterday = today.minusDays(1);
+
+            // Odoo에서 출퇴근 기록 조회
+            Object[] records = (Object[]) models.execute(
+                    "execute_kw", Arrays.asList(
+                            odooDb, odooUid, odooPassword,
+                            "hr.attendance", "search_read",
+                            List.of(
+                                    List.of(
+                                            Arrays.asList("employee_id", "=", hrId),
+                                            Arrays.asList("check_in", "!=", false) // 출근 기록 존재
+                                    )
+                            ),
+                            Map.of("fields", Arrays.asList("check_in", "check_out", "worked_hours"))
+                    )
+            );
+
+            List<AttendanceDto> attendanceList = new ArrayList<>();
+            for (Object record : records) {
+                Map<String, Object> attendanceMap = (Map<String, Object>) record;
+                AttendanceDto dto = new AttendanceDto();
+                dto.setId((int) attendanceMap.get("id"));
+                dto.setEmployeeId(hrId);
+
+                // 출근 시간 (UTC -> KST 변환)
+                Timestamp checkInUtc = Timestamp.valueOf((String) attendanceMap.get("check_in"));
+                LocalDateTime checkInKst = convertUtcToKst(checkInUtc);
+                dto.setCheckIn(Timestamp.valueOf(checkInKst));
+
+                // 퇴근 시간 (UTC -> KST 변환), 퇴근 기록이 있을 경우
+                LocalDateTime checkOutKst = null;  // 변수 초기화
+                if (attendanceMap.get("check_out") instanceof String) {
+                    Timestamp checkOutUtc = Timestamp.valueOf((String) attendanceMap.get("check_out"));
+                    checkOutKst = convertUtcToKst(checkOutUtc);
+                    dto.setCheckOut(Timestamp.valueOf(checkOutKst));
+                } else {
+                    dto.setCheckOut(null); // 퇴근 기록이 없을 경우
+                }
+
+                System.out.println("checkInKst: "+checkInKst);
+                System.out.println("checkInUtc: "+checkInUtc);
+                System.out.println(checkOutKst);
+
+                // 1. 오늘이 출근/퇴근일 경우
+                if (checkInKst.toLocalDate().isEqual(today) && dto.getCheckOut() != null) {
+                    attendanceList.add(dto); // 출퇴근 기록 모두 출력
+                }
+
+                // 2. 출근일이 어제고 퇴근일이 오늘 새벽일 경우
+                if (checkInKst.toLocalDate().isEqual(yesterday) && checkOutKst != null) {
+                    LocalDateTime oneHourAgo = LocalDateTime.now(ZoneId.of("Asia/Seoul")).minusHours(1);
+                    if (checkOutKst.isAfter(oneHourAgo)) {
+                        attendanceList.add(dto); // 퇴근 시간이 한 시간 이내일 경우에만 출력
+                    }
+                }
+
+                // 3. 출근일이 어제, 퇴근일이 어제인 경우는 출력하지 않음
+
+                // 4. 오늘 출근만 했을 경우 (퇴근 기록 없음)
+                if (checkInKst.toLocalDate().isEqual(today) && dto.getCheckOut() == null) {
+                    attendanceList.add(dto); // 출근 기록만 출력
+                }
+            }
+
+            if (attendanceList.isEmpty()) {
+                return ResponseEntity.status(HttpStatus.NO_CONTENT).body(null); // 아무 기록도 없을 경우
+            } else {
+                return ResponseEntity.ok(attendanceList); // 출퇴근 기록 반환
+            }
+        } catch (FeignException.BadRequest e) {
+            // 400 Bad Request 발생 시 처리
+            System.out.println("Bad Request: " + e.getMessage());
+            return ResponseEntity.badRequest().body(null);
+        } catch (FeignException e) {
+            // 기타 FeignException 발생 시 처리
+            System.out.println("Feign Exception: " + e.getMessage());
+            return ResponseEntity.status(e.status()).body(null);
+        } catch (Exception e) {
+            // 일반 예외 처리
+            System.out.println("Exception: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(null);
+        }
+    }
+
+    public LocalDateTime convertUtcToKst(Timestamp utcTime) {
+        ZonedDateTime utcZonedDateTime = utcTime.toInstant().atZone(ZoneId.of("UTC"));
+        ZonedDateTime kstZonedDateTime = utcZonedDateTime.withZoneSameInstant(ZoneId.of("Asia/Seoul"));
+        return kstZonedDateTime.toLocalDateTime();
     }
 }
 

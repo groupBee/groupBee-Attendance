@@ -44,4 +44,9 @@ public class AttendanceController {
     public ResponseEntity<String> checkOut(@RequestBody AttendanceDto attendanceDto) {
         return attendanceService.checkOut(attendanceDto);
     }
+
+    @GetMapping("/todayCheckIn")
+    public ResponseEntity<?> getTodayCheckIn() {
+        return attendanceService.getTodayCheckIn();
+    }
 }
