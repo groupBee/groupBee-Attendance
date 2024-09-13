@@ -119,8 +119,8 @@ public class AttendanceService {
                     .withZoneSameInstant(ZoneId.of("UTC"))
                     .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
 
-            System.out.println(attendanceDto.getCheckIn());
-            System.out.println(utcCheckInTime);
+            System.out.println("로컬시스템의 시간 출력: " + attendanceDto.getCheckIn());
+            System.out.println("로컬시스템의 시간을 utc 로 변경: " + utcCheckInTime);
 
             // 출근 데이터를 Map으로 정의
             Map<String, Object> attendanceData = new HashMap<>();
@@ -192,8 +192,8 @@ public class AttendanceService {
                     "hr.attendance", "search",
                     List.of(Arrays.asList(
                             Arrays.asList("employee_id", "=", hrId),  // 직원 ID
-                            Arrays.asList("check_in", ">=", formattedStartOfDayUtc), // 특정 날짜의 출근 기록 검색
-                            Arrays.asList("check_in", "<=", formattedEndOfDayUtc),
+//                            Arrays.asList("check_in", ">=", formattedStartOfDayUtc), // 특정 날짜의 출근 기록 검색
+//                            Arrays.asList("check_in", "<=", formattedEndOfDayUtc),
                             Arrays.asList("check_out", "=", false) // 아직 퇴근 기록이 없는 것만 검색
                     ))
             ));
